@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-specific
+city2facebook/config.json
+city2facebook/config.dev.json
+city2facebook/posted.jsonl

@@ -1,0 +1,170 @@
+import json
+import logging
+import os
+import re
+import time
+
+import requests
+
+
+logger = logging.getLogger("fbpost")
+
+
+def clean_text(text: str) -> str:
+    text = text.strip()
+    text = re.sub(r"^[-•*]\s*", "", text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"\*(.+?)\*", r"\1", text)
+    return text
+
+
+def format_post(summary: dict, meeting) -> str:
+    lines = []
+    lines.append(f"\u270d\ufe0f Denton {meeting.body_name} \u2014 {meeting.date}")
+    lines.append("")
+    lines.append(summary.get("summary", ""))
+    lines.append("")
+
+    decisions = summary.get("key_decisions")
+    if decisions:
+        lines.append("Key decisions:")
+        for d in decisions:
+            if isinstance(d, dict):
+                lines.append(f"  \u2022 {clean_text(d.get('text', d.get('decision', '')))}")
+            else:
+                lines.append(f"  \u2022 {clean_text(d)}")
+        lines.append("")
+
+    impactful = summary.get("impactful_events")
+    if impactful:
+        lines.append("What this means for residents:")
+        for item in impactful:
+            if isinstance(item, dict):
+                lines.append(f"  \u2022 {clean_text(item.get('text', item.get('event', '')))}")
+            else:
+                lines.append(f"  \u2022 {clean_text(item)}")
+        lines.append("")
+
+    anecdote = summary.get("anecdote")
+    if anecdote:
+        lines.append(anecdote)
+        lines.append("")
+
+    tags = ["#DentonTX"]
+    body = meeting.body_name.strip()
+    clean = re.sub(r"[^A-Za-z0-9]", "", body).replace(" ", "")
+    if clean:
+        tags.append(f"#{clean}")
+    tags.append("#CityGovernment")
+    lines.append(" ".join(tags))
+
+    return "\n".join(lines)
+
+
+def get_log_path(config: dict) -> str:
+    log_path = config.get("posted_log", "posted.jsonl")
+    if not os.path.isabs(log_path):
+        log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), log_path)
+    return log_path
+
+
+def load_posted_log(log_path: str) -> list:
+    if not os.path.exists(log_path):
+        logger.debug(f"Posted log not found: {log_path} (new)")
+        return []
+    entries = []
+    with open(log_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    logger.debug(f"Loaded {len(entries)} entries from posted log")
+    return entries
+
+
+def append_posted_log(log_path: str, entry: dict):
+    with open(log_path, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+    logger.info(f"Appended entry to posted log: {log_path}")
+
+
+def is_already_posted(log_path: str, meeting_id: str) -> bool:
+    entries = load_posted_log(log_path)
+    found = any(e.get("meeting_id") == str(meeting_id) for e in entries)
+    logger.debug(f"Meeting {meeting_id} already posted: {found}")
+    return found
+
+
+def post_to_facebook(message: str, config: dict) -> str:
+    page_id = config.get("fb_page_id", "").strip()
+    token = config.get("fb_token", "").strip()
+
+    if not page_id or not token:
+        logger.error("Facebook page_id or token not configured in config.json")
+        print("[ERROR] Facebook page_id or token not configured. Run in --dry-run mode or update config.json.")
+        return ""
+
+    url = f"https://graph.facebook.com/v18.0/{page_id}/feed"
+    logger.info(f"Posting to Facebook (page: {page_id})")
+    logger.debug(f"Facebook API URL: {url}")
+    logger.debug(f"Message length: {len(message)} chars")
+
+    params = {
+        "message": message,
+        "access_token": token,
+    }
+
+    t0 = time.time()
+    resp = requests.post(url, data=params)
+    elapsed = time.time() - t0
+
+    logger.debug(f"Facebook API response: status={resp.status_code}, time={elapsed:.2f}s")
+
+    if resp.status_code != 200:
+        logger.error(f"Facebook API error ({resp.status_code}): {resp.text}")
+        print(f"[ERROR] Facebook API returned status {resp.status_code}")
+        print(f"  Response: {resp.text}")
+        return ""
+
+    result = resp.json()
+    logger.debug(f"Facebook API response body: {json.dumps(result)}")
+
+    post_id = result.get("id", "")
+    if not post_id:
+        logger.error(f"Facebook response missing post ID: {json.dumps(result)}")
+        print("[ERROR] Facebook API response missing post ID")
+        return ""
+
+    post_url = f"https://facebook.com/{post_id}"
+    logger.info(f"Post published: {post_url}")
+    return post_url
+
+
+def run_post(meeting_id: str, summary: dict, meeting, message: str, config: dict, force: bool):
+    log_path = get_log_path(config)
+
+    if not force and is_already_posted(log_path, meeting_id):
+        logger.info(f"Meeting {meeting_id} already posted. Use --force to repost.")
+        print(f"[SKIP] Meeting {meeting_id} already posted. Use --force to repost.")
+        return
+
+    post_url = post_to_facebook(message, config)
+
+    entry = {
+        "meeting_id": meeting_id,
+        "date": meeting.date,
+        "body": meeting.body_name,
+        "posted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "post_url": post_url,
+    }
+    append_posted_log(log_path, entry)
+
+    if post_url:
+        print(f"[OK] Posted successfully: {post_url}")
+        logger.info(f"Meeting {meeting_id} posted successfully to Facebook")
+    else:
+        print("[WARN] Post logged but Facebook returned no post URL")
+        logger.warning(f"Meeting {meeting_id} logged but Facebook returned no post URL")
