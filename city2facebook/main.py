@@ -57,7 +57,7 @@ def process_meeting(meeting_id: str, config: dict, auto: bool, dry_run: bool, fo
     logger.info("LLM summary complete.")
 
     logger.info("Formatting post message...")
-    message = format_post(summary, meeting)
+    message = format_post(summary, meeting, config)
 
     if dry_run:
         print("\n=== DRAFT POST ===")
