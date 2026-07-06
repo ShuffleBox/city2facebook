@@ -61,6 +61,10 @@ class Meeting:
             return name or "Unknown Body"
         return "Unknown Body"
 
+    @property
+    def source_url(self) -> str:
+        return self.metadata.get("source_url", "")
+
     def get_agenda_summary(self) -> str:
         unique = []
         seen = set()
