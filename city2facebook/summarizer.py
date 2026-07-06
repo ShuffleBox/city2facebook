@@ -22,7 +22,9 @@ You must output a valid JSON object with exactly these fields:
 - "summary": A factual overview of the meeting
 - "key_decisions": A list of bullet points covering all the main votes, resolutions, and actions taken
 - "impactful_events": A list of items that notably affect residents (new fees, policy changes, development approvals, safety measures, etc.). Use null if nothing impactful.
-- "anecdote": A brief lighthearted or community-positive moment from the meeting, if any. Use null if there was nothing notable."""
+ - "anecdote": A brief lighthearted or community-positive moment from the meeting, if any. Use null if there was nothing notable.
+
+IMPORTANT: For the anecdote field, use only facts explicitly present in the transcript. Do not invent, infer, or assume speaker roles or titles. If the transcript identifies someone as "Superintendent," "Staff," "Chair," etc., use that exact title. If a person's role is unclear, refer to them by name only. Do not label someone as a "board member" unless the transcript explicitly states they are one. Prefer close paraphrases over creative rewrites."""
 
 
 def build_user_prompt(meeting) -> str:

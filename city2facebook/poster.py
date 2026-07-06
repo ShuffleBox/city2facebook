@@ -114,7 +114,7 @@ def post_to_facebook(message: str, config: dict) -> str:
         print("[ERROR] Facebook page_id or token not configured. Run in --dry-run mode or update config.json.")
         return ""
 
-    url = f"https://graph.facebook.com/v18.0/{page_id}/feed"
+    url = f"https://graph.facebook.com/v25.0/{page_id}/feed"
     logger.info(f"Posting to Facebook (page: {page_id})")
     logger.debug(f"Facebook API URL: {url}")
     logger.debug(f"Message length: {len(message)} chars")
